@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-# 1. Cấu hình tỉ lệ Roll chuẩn của Auto Chess
+# 1. Tỉ lệ Roll
 roll_rates = {
     5: {1: 45, 2: 35, 3: 18, 4: 2},
     6: {1: 30, 2: 40, 3: 25, 4: 5},
@@ -12,125 +12,98 @@ roll_rates = {
     11: {1: 15, 2: 20, 3: 20, 4: 36}
 }
 
-st.set_page_config(page_title="Auto Chess Ban Tool", layout="centered")
-st.title("🧙‍♂️ Auto Chess Ban Strategy")
-st.caption("Công cụ tính toán xác suất thực tế dựa trên Level và cơ chế Ban")
+# Cấu hình giao diện cực gọn
+st.set_page_config(page_title="AC Ban Tool", layout="centered")
 
-# Đọc dữ liệu
+# CSS để thu nhỏ font và khoảng cách trên Mobile
+st.markdown("""
+    <style>
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    h1 {font-size: 1.5rem !important; text-align: center;}
+    .stSelectbox label, .stMultiSelect label {display: none;} /* Ẩn nhãn để tiết kiệm chỗ */
+    div[data-testid="stExpander"] {margin-top: -10px;}
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("🧙‍♂️ AC BAN TOOL")
+
 try:
     df = pd.read_csv("data.csv")
     
-    def get_unique_elements(dataframe, column_name):
+    def get_unique(dataframe, col):
         elements = set()
-        for val in dataframe[column_name].dropna():
+        for val in dataframe[col].dropna():
             parts = [p.strip() for p in str(val).split(',')]
             elements.update(parts)
         return sorted([e for e in elements if e and e != 'None'])
 
-    all_races = get_unique_elements(df, 'Tộc (Race)')
-    all_classes = get_unique_elements(df, 'Hệ (Class)')
-    all_synergies = sorted(list(set(all_races + all_classes)))
+    all_races = get_unique(df, 'Tộc (Race)')
+    all_classes = get_unique(df, 'Hệ (Class)')
+    all_syns = sorted(list(set(all_races + all_classes)))
 
-    # --- PHẦN 1: THIẾT LẬP TRẬN ĐẤU ---
-    with st.expander("⚙️ Cấu hình trận đấu", expanded=True):
-        col_l, col_p = st.columns(2)
-        with col_l:
-            level = st.selectbox("Cấp độ của bạn (Level):", list(roll_rates.keys()), index=3)
-        with col_p:
-            playing = st.multiselect("Hệ/Tộc bạn đang chơi (Không Ban):", all_synergies)
+    # --- HÀNG 1: LEVEL & PLAYING ---
+    col_l, col_p = st.columns([1, 2])
+    level = col_l.selectbox("L", list(roll_rates.keys()), index=3, help="Level")
+    playing = col_p.multiselect("P", all_syns, placeholder="Hệ đang chơi")
 
-    # --- PHẦN 2: LỌC VÀ CHỌN TƯỚNG ---
-    st.subheader("🎯 Tìm tướng mục tiêu")
+    # --- HÀNG 2: BỘ LỌC TƯỚNG ---
     col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        filter_race = st.selectbox("Lọc theo Tộc:", ["Tất cả"] + all_races)
-    with col_f2:
-        filter_class = st.selectbox("Lọc theo Hệ:", ["Tất cả"] + all_classes)
+    f_race = col_f1.selectbox("R", ["Tộc: Tất cả"] + all_races)
+    f_class = col_f2.selectbox("C", ["Hệ: Tất cả"] + all_classes)
 
-    filtered_df = df.copy()
-    if filter_race != "Tất cả":
-        filtered_df = filtered_df[filtered_df['Tộc (Race)'].str.contains(filter_race, na=False)]
-    if filter_class != "Tất cả":
-        filtered_df = filtered_df[filtered_df['Hệ (Class)'].str.contains(filter_class, na=False)]
+    # Logic lọc
+    f_df = df.copy()
+    if f_race != "Tộc: Tất cả": f_df = f_df[f_df['Tộc (Race)'].str.contains(f_race, na=False)]
+    if f_class != "Hệ: Tất cả": f_df = f_df[f_df['Hệ (Class)'].str.contains(f_class, na=False)]
 
-    targets = st.multiselect("Chọn tướng cần tìm (tối đa 3):", filtered_df['Tên quân cờ'].unique())
+    # --- CHỌN TƯỚNG ---
+    targets = st.multiselect("T", f_df['Tên quân cờ'].unique(), placeholder="Chọn tướng mục tiêu")
 
-    # --- PHẦN 3: LOGIC TÍNH TOÁN ---
     if targets:
-        st.divider()
-        
-        # LỌC BỂ TƯỚNG (POOL) THỰC TẾ
-        # Game không roll ra Egersis và các Pandaren bậc cao (3,4,5$)
-        mask_pool = (
-            (~df['Tộc (Race)'].str.contains('Egersis', na=False)) & 
-            (~df['Hệ (Class)'].str.contains('Egersis', na=False)) &
-            ~((df['Tộc (Race)'].str.contains('Pandaren', na=False)) & (df['Giá (Gold)'] > 2))
-        )
-        df_active_pool = df[mask_pool].copy()
-        pool_counts = df_active_pool['Giá (Gold)'].value_counts().to_dict()
+        # Lọc Pool
+        mask = (~df['Tộc (Race)'].str.contains('Egersis', na=False)) & \
+               (~df['Hệ (Class)'].str.contains('Egersis', na=False)) & \
+               ~((df['Tộc (Race)'].str.contains('Pandaren', na=False)) & (df['Giá (Gold)'] > 2))
+        df_active = df[mask].copy()
+        pool_counts = df_active['Giá (Gold)'].value_counts().to_dict()
 
         results = []
-        for syn in all_synergies:
-            # Không Ban hệ đang chơi hoặc hệ Egersis (vì Egersis ko có trong bể)
-            if syn in playing or syn == "Egersis": 
-                continue
+        for syn in all_syns:
+            if syn in playing or syn == "Egersis": continue
             
-            # Tìm các tướng sẽ bị loại bỏ nếu Ban hệ này
-            mask_ban = df_active_pool['Tộc (Race)'].str.contains(syn, na=False) | df_active_pool['Hệ (Class)'].str.contains(syn, na=False)
-            banned_units = df_active_pool[mask_ban]
+            mask_ban = df_active['Tộc (Race)'].str.contains(syn, na=False) | df_active['Hệ (Class)'].str.contains(syn, na=False)
+            banned_units = df_active[mask_ban]
             
-            # Nếu trong danh sách Ban có chứa tướng mình đang tìm -> Tuyệt đối không Ban
-            if any(u in banned_units['Tên quân cờ'].values for u in targets):
-                continue
+            if any(u in banned_units['Tên quân cờ'].values for u in targets): continue
             
-            ban_impact = {"name": syn, "details": [], "total_boost": 0}
-            
+            impact = {"name": syn, "txt": [], "val": 0}
             for t_name in targets:
-                t_row = df_active_pool[df_active_pool['Tên quân cờ'] == t_name]
+                t_row = df_active[df_active['Tên quân cờ'] == t_name]
                 if t_row.empty: continue
-                t_cost = t_row['Giá (Gold)'].values[0]
-                
-                # Tướng 5$ có cơ chế roll đặc biệt nên công thức pool size không áp dụng chính xác
-                if t_cost >= 5: 
-                    ban_impact["details"].append(f"• **{t_name}**: (Tướng 5$ không tính boost)")
-                    continue
+                cost = t_row['Giá (Gold)'].values[0]
+                if cost >= 5: continue
                     
-                num_removed = len(banned_units[banned_units['Giá (Gold)'] == t_cost])
-                
-                if num_removed > 0:
-                    rate_by_level = roll_rates[level][t_cost] / 100
+                removed = len(banned_units[banned_units['Giá (Gold)'] == cost])
+                if removed > 0:
+                    rate = roll_rates[level][cost] / 100
+                    p_old = rate / pool_counts[cost]
+                    p_new = rate / (pool_counts[cost] - removed)
                     
-                    # Xác suất trong 1 ô đơn lẻ
-                    p_old = rate_by_level / pool_counts[t_cost]
-                    p_new = rate_by_level / (pool_counts[t_cost] - num_removed)
-                    
-                    # Xác suất xuất hiện ít nhất 1 lần trong 1 lượt Roll (5 ô)
-                    # Công thức: 1 - (Xác suất trượt)^5
-                    p_roll_old = 1 - (1 - p_old)**5
-                    p_roll_new = 1 - (1 - p_new)**5
-                    
-                    boost = (p_new / p_old - 1) * 100
-                    ban_impact["details"].append(
-                        f"• **{t_name}**: +{boost:.1f}% (Tỉ lệ lượt: {p_roll_old:.1%} → {p_roll_new:.1%})"
-                    )
-                    ban_impact["total_boost"] += boost
+                    # XS 1 lượt (5 ô)
+                    r_old, r_new = 1-(1-p_old)**5, 1-(1-p_new)**5
+                    boost = (p_new/p_old - 1) * 100
+                    impact["txt"].append(f"**{t_name}**: {r_old:.1%} → **{r_new:.1%}**")
+                    impact["val"] += boost
             
-            if ban_impact["total_boost"] > 0:
-                results.append(ban_impact)
+            if impact["val"] > 0: results.append(impact)
 
-        # Sắp xếp và lấy 3 gợi ý tốt nhất
-        top_3 = sorted(results, key=lambda x: x['total_boost'], reverse=True)[:3]
-        
-        if top_3:
-            st.subheader("💡 3 Gợi ý Ban tốt nhất:")
-            for i, res in enumerate(top_3):
-                with st.expander(f"Gợi ý {i+1}: Ban **{res['name']}** (Lợi ích: +{res['total_boost']:.1f}%)", expanded=True):
-                    for d in res['details']:
-                        st.write(d)
-        else:
-            st.info("Không có hệ nào phù hợp để Ban (Có thể hệ bạn muốn Ban không có tướng cùng giá tiền với tướng mục tiêu).")
+        # Hiển thị Top 3 gọn nhất
+        top = sorted(results, key=lambda x: x['val'], reverse=True)[:3]
+        for i, res in enumerate(top):
+            with st.expander(f"Top {i+1}: Ban **{res['name']}** (+{res['val']:.1f}%)", expanded=True):
+                for t in res["txt"]: st.write(t)
     else:
-        st.info("👆 Sử dụng bộ lọc Tộc/Hệ và chọn tướng mục tiêu để nhận gợi ý.")
+        st.info("Chọn tướng để thấy kết quả")
 
 except Exception as e:
-    st.error(f"Đã xảy ra lỗi: {e}")
+    st.error(f"Lỗi: {e}")
