@@ -29,6 +29,7 @@ try:
 
     all_races = get_unique_elements(df, 'Tộc (Race)')
     all_classes = get_unique_elements(df, 'Hệ (Class)')
+    # Gộp chung để làm danh sách cấm/đang chơi
     all_synergies = sorted(list(set(all_races + all_classes)))
 
     # --- PHẦN 1: THIẾT LẬP CHUNG ---
@@ -43,19 +44,18 @@ try:
 
     # --- PHẦN 2: LỌC VÀ CHỌN TƯỚNG MỤC TIÊU ---
     st.subheader("2. Chọn tướng cần tìm")
-    st.caption("Mẹo: Dùng Tộc/Hệ để lọc nhanh danh sách tướng bên dưới")
     
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         filter_race = st.selectbox("Lọc theo Tộc:", ["Tất cả"] + all_races)
     with col_f2:
-        filter_class = st.selectbox("Lọc theo Hệ:", ["Tất cả"] + all_class)
+        filter_class = st.selectbox("Lọc theo Hệ:", ["Tất cả"] + all_classes)
 
     # Logic lọc danh sách tướng
     filtered_df = df.copy()
     if filter_race != "Tất cả":
         filtered_df = filtered_df[filtered_df['Tộc (Race)'].str.contains(filter_race, na=False)]
-    if filter_classes != "Tất cả":
+    if filter_class != "Tất cả":
         filtered_df = filtered_df[filtered_df['Hệ (Class)'].str.contains(filter_class, na=False)]
 
     targets = st.multiselect("Chọn tướng mục tiêu (1-3):", filtered_df['Tên quân cờ'].unique())
@@ -75,11 +75,13 @@ try:
 
         results = []
         for syn in all_synergies:
+            # Bỏ qua Egersis và hệ đang chơi
             if syn in playing or syn == "Egersis": continue
             
             mask_ban = df_active_pool['Tộc (Race)'].str.contains(syn, na=False) | df_active_pool['Hệ (Class)'].str.contains(syn, na=False)
             banned_units = df_active_pool[mask_ban]
             
+            # Nếu hệ định BAN chứa tướng cần tìm -> Bỏ qua
             if any(u in banned_units['Tên quân cờ'].values for u in targets):
                 continue
             
@@ -115,7 +117,7 @@ try:
         else:
             st.info("Không tìm thấy hệ nào phù hợp để Ban.")
     else:
-        st.info("👆 Hãy dùng bộ lọc Tộc/Hệ và chọn tướng để xem kết quả.")
+        st.info("👆 Hãy dùng bộ lọc và chọn tướng để xem kết quả ngay.")
 
 except Exception as e:
-    st.error(f"Lỗi: {e}")
+    st.error(f"Lỗi hệ thống: {e}")
