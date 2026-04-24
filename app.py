@@ -14,6 +14,7 @@ roll_rates = {
 
 st.set_page_config(page_title="Auto Chess Ban Tool", layout="centered")
 st.title("🧙‍♂️ Tự Động Gợi Ý Ban Tướng")
+st.caption("Lưu ý: Hệ Egersis và Pandaren (3,4,5$) đã được loại bỏ khỏi bể tướng roll.")
 
 # Đọc dữ liệu
 try:
@@ -29,7 +30,7 @@ try:
 
     all_synergies = get_all_synergies(df)
 
-    # --- NHẬP LIỆU (Thay đổi ở đây sẽ cập nhật kết quả ngay) ---
+    # --- NHẬP LIỆU ---
     col1, col2 = st.columns(2)
     with col1:
         level = st.selectbox("Cấp độ (Level):", list(roll_rates.keys()), index=3)
@@ -41,22 +42,37 @@ try:
     # --- LOGIC TÍNH TOÁN TỰ ĐỘNG ---
     if targets:
         st.divider()
-        results = []
-        pool_counts = df['Giá (Gold)'].value_counts().to_dict()
+        
+        # LỌC BỂ TƯỚNG (POOL) THỰC TẾ
+        # 1. Loại bỏ toàn bộ Egersis
+        # 2. Loại bỏ Pandaren giá > 2 gold
+        mask_pool = (
+            (~df['Tộc (Race)'].str.contains('Egersis', na=False)) & 
+            (~df['Hệ (Class)'].str.contains('Egersis', na=False)) &
+            ~((df['Tộc (Race)'].str.contains('Pandaren', na=False)) & (df['Giá (Gold)'] > 2))
+        )
+        
+        df_active_pool = df[mask_pool].copy()
+        pool_counts = df_active_pool['Giá (Gold)'].value_counts().to_dict()
 
+        results = []
         for syn in all_synergies:
-            if syn in playing: continue
+            # Không gợi ý Ban những hệ không có trong bể roll (Egersis) hoặc hệ đang chơi
+            if syn in playing or syn == "Egersis": 
+                continue
             
-            mask = df['Tộc (Race)'].str.contains(syn, na=False) | df['Hệ (Class)'].str.contains(syn, na=False)
-            banned_units = df[mask]
+            # Tìm tướng bị loại khi BAN hệ này trong bể roll thực tế
+            mask_ban = df_active_pool['Tộc (Race)'].str.contains(syn, na=False) | df_active_pool['Hệ (Class)'].str.contains(syn, na=False)
+            banned_units = df_active_pool[mask_ban]
             
+            # Nếu hệ định BAN chứa tướng cần tìm -> Bỏ qua
             if any(u in banned_units['Tên quân cờ'].values for u in targets):
                 continue
             
             ban_impact = {"name": syn, "details": [], "total_boost": 0}
             
             for t_name in targets:
-                t_row = df[df['Tên quân cờ'] == t_name]
+                t_row = df_active_pool[df_active_pool['Tên quân cờ'] == t_name]
                 if t_row.empty: continue
                 t_cost = t_row['Giá (Gold)'].values[0]
                 
@@ -76,7 +92,7 @@ try:
             if ban_impact["total_boost"] > 0:
                 results.append(ban_impact)
 
-        # Xuất kết quả Top 3
+        # Xuất kết quả
         top_3 = sorted(results, key=lambda x: x['total_boost'], reverse=True)[:3]
         
         if top_3:
@@ -86,9 +102,9 @@ try:
                     for d in res['details']:
                         st.write(d)
         else:
-            st.info("Chưa có gợi ý nào giúp tăng tỉ lệ cho các tướng này.")
+            st.info("Không tìm thấy hệ nào để Ban giúp tăng tỉ lệ (có thể do các hệ còn lại không có tướng cùng bậc tiền với tướng mục tiêu).")
     else:
-        st.write("👆 *Hãy chọn ít nhất 1 tướng để xem gợi ý ngay lập tức.*")
+        st.write("👆 *Chọn tướng để xem kết quả.*")
 
 except Exception as e:
     st.error(f"Lỗi: {e}")
