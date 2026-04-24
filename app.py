@@ -55,7 +55,7 @@ try:
     filtered_df = df.copy()
     if filter_race != "Tất cả":
         filtered_df = filtered_df[filtered_df['Tộc (Race)'].str.contains(filter_race, na=False)]
-    if filter_class != "Tất cả":
+    if filter_classes != "Tất cả":
         filtered_df = filtered_df[filtered_df['Hệ (Class)'].str.contains(filter_class, na=False)]
 
     targets = st.multiselect("Chọn tướng mục tiêu (1-3):", filtered_df['Tên quân cờ'].unique())
